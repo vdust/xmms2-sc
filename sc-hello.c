@@ -19,13 +19,20 @@ register_Hello (xmmsc_connection_t *conn, void *udata)
 	METHOD_NEW_NOARG (conn, NULL, method_Hello, "Hello", "Say hello to the world", NULL);
 }
 
-static void
+static gboolean
 say_hello_timeout (xmmsc_connection_t *conn) {
 	xmmsv_t *bc;
 	xmmsv_t *v;
+
 	bc = xmmsv_build_list (XMMSV_LIST_ENTRY_STR("bcHello"), XMMSV_LIST_END);
 	v = xmmsv_new_string ("Hello, world!");
+
 	xmmsc_sc_broadcast_emit (conn, bc, v);
+
+	xmmsv_unref (v);
+	xmmsv_unref (bc);
+
+	return TRUE;
 }
 
 void

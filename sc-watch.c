@@ -15,13 +15,22 @@ char *xc_clientname = "sc-watch";
 	xmmsc_result_unref (res); \
 } while (0)
 
+typedef struct {
+	xmmsc_connection_t *conn;
+	gint cid;
+	xmmsv_t *ns;
+} introspect_data_t;
+static introspect_data_t *introspect_data_new (xmmsc_connection_t *conn, gint cid, xmmsv_t *parent_ns, const char *ns);
+static void introspect_data_free (introspect_data_t *id);
+
 static int c2c_connected_cb (xmmsv_t *val, xmmsc_connection_t *conn);
 static int c2c_disconnected_cb (xmmsv_t *val, xmmsc_connection_t *conn);
 static int c2c_message_cb (xmmsv_t *val, xmmsc_connection_t *conn);
 static int get_connected_cb (xmmsv_t *val, xmmsc_connection_t *conn);
 
-static int namespace_introspect_cb (xmmsv_t *val, xmmsc_connection_t *conn);
+static int namespace_introspect_cb (xmmsv_t *val, introspect_data_t *id);
 
+static void query_introspection (xmmsc_connection_t *conn, gint cid, xmmsv_t *parent_ns, const char *ns);
 static gboolean query_clients (xmmsc_connection_t *conn);
 static gboolean do_introspection (xmmsc_connection_t *conn);
 
@@ -90,6 +99,53 @@ pop_cids (xmmsv_t *cids, xmmsc_connection_t *conn)
 	}
 }
 
+static xmmsv_t *
+string_list_copy (xmmsv_t *list)
+{
+	xmmsv_t *newlist = xmmsv_new_list();
+	xmmsv_list_iter_t *it;
+	const char *str;
+
+	if (list && xmmsv_get_list_iter (list, &it)) {
+		while (xmmsv_list_iter_valid (it)) {
+			xmmsv_list_iter_entry_string (it, &str);
+			xmmsv_list_append_string (newlist, str);
+			xmmsv_list_iter_next (it);
+		}
+	}
+
+	return newlist;
+}
+
+static introspect_data_t *
+introspect_data_new (xmmsc_connection_t *conn, gint cid, xmmsv_t *parent_ns, const char *ns)
+{
+	introspect_data_t *id;
+
+	id = g_slice_new (introspect_data_t);
+	id->conn = conn;
+	id->cid = cid;
+	id->ns = string_list_copy (parent_ns); /* create a new list even if parent_ns == NULL */
+
+	if (ns) {
+		xmmsv_list_append_string (id->ns, ns);
+	}
+
+	return id;
+}
+
+static void
+introspect_data_free (introspect_data_t *id)
+{
+	if (id) {
+		xmmsv_unref (id->ns);
+		id->conn = NULL;
+		id->cid = 0;
+		id->ns = NULL;
+		g_slice_free (introspect_data_t, id);
+	}
+}
+
 static int
 c2c_connected_cb (xmmsv_t *val, xmmsc_connection_t *conn)
 {
@@ -130,32 +186,53 @@ sc_broadcast_cb (xmmsv_t *val, xmmsc_connection_t *conn)
 {
 	g_print ("> Received SC broadcast: ");
 	xmmsv_dump (val);
-	return 1;
+	return !xmmsv_is_type(val, XMMSV_TYPE_ERROR);
+}
+
+static void
+query_introspection (xmmsc_connection_t *conn, gint cid, xmmsv_t *parent_ns, const char *ns)
+{
+	introspect_data_t *id = introspect_data_new (conn, cid, parent_ns, ns);
+	if (id) {
+		CALLBACK_SET_ARGS (conn, xmmsc_sc_namespace_introspect, namespace_introspect_cb, id, cid, id->ns);
+	}
 }
 
 static int
-namespace_introspect_cb (xmmsv_t *val, xmmsc_connection_t *conn)
+namespace_introspect_cb (xmmsv_t *val, introspect_data_t *id)
 {
 	gint sender;
-	xmmsv_t *payload, *bcs, *bc, *path;
-	const char *bcName;
+	xmmsv_t *payload, *bcs, *bc, *path, *nss;
+	const char *bcName, *ns;
 	gint i;
 
 	g_print ("@ ");
 	xmmsv_dump (val);
 
-	if (!xmmsv_dict_entry_get_int (val, "sender", &sender)) return 0;
-	if (!xmmsv_dict_get (val, "payload", &payload)) return 0;
-	if (!xmmsv_dict_get (payload, "broadcasts", &bcs)) return 0;
+	if (!xmmsv_dict_entry_get_int (val, "sender", &sender)) goto cleanup;
+	if (!xmmsv_dict_get (val, "payload", &payload)) goto cleanup;
+	if (!xmmsv_dict_get (payload, "broadcasts", &bcs)) goto cleanup;
 	i = xmmsv_list_get_size (bcs);
 	for (; i > 0; --i) {
 		if (!xmmsv_list_get (bcs, i - 1, &bc)) continue;
 		if (!xmmsv_dict_entry_get_string (bc, "name", &bcName)) continue;
 		if (!bcName || bcName[0] == '\0') continue;
-		path = xmmsv_build_list (XMMSV_LIST_ENTRY_STR(bcName), XMMSV_LIST_END);
-		CALLBACK_SET_ARGS (conn, xmmsc_sc_broadcast_subscribe, sc_broadcast_cb, conn, sender, path);
+		path = string_list_copy (id->ns);
+		xmmsv_list_append_string (path, bcName);
+		CALLBACK_SET_ARGS (id->conn, xmmsc_sc_broadcast_subscribe, sc_broadcast_cb, id->conn, sender, path);
 		xmmsv_unref (path);
 	}
+	if (xmmsv_dict_get (payload, "namespaces", &nss)) {
+		i = xmmsv_list_get_size (nss);
+		for (; i > 0; --i) {
+			if (!xmmsv_list_get_string (nss, i - 1, &ns)) continue;
+			query_introspection (id->conn, id->cid, id->ns, ns);
+		}
+	}
+	
+cleanup:
+	introspect_data_free (id);
+
 	return 0;
 }
 
@@ -170,17 +247,12 @@ static gboolean
 do_introspection (xmmsc_connection_t *conn)
 {
 	gint cid;
-	xmmsv_t *ns;
 	while ((cid = pop_id()) > 0) {
-		ns = xmmsv_new_list();
-		CALLBACK_SET_ARGS (conn, xmmsc_sc_namespace_introspect, namespace_introspect_cb, conn, cid, ns);
-		xmmsv_unref (ns);
+		query_introspection (conn, cid, NULL, NULL);
 	}
 	introspection_tm = 0;
 	return FALSE;
 }
-
-
 
 void
 xc_setup (GMainLoop *ml, xmmsc_connection_t *conn)

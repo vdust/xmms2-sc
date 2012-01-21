@@ -194,7 +194,7 @@ query_introspection (xmmsc_connection_t *conn, gint cid, xmmsv_t *parent_ns, con
 {
 	introspect_data_t *id = introspect_data_new (conn, cid, parent_ns, ns);
 	if (id) {
-		CALLBACK_SET_ARGS (conn, xmmsc_sc_namespace_introspect, namespace_introspect_cb, id, cid, id->ns);
+		CALLBACK_SET_ARGS (conn, xmmsc_sc_introspect_get_namespace, namespace_introspect_cb, id, cid, id->ns);
 	}
 }
 

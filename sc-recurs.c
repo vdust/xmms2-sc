@@ -2,8 +2,8 @@
 
 char *xc_clientname = "sc-recurs";
 
-#define METHOD_NEW_NOARG(c, ns, meth, name, doc, ud) \
-	xmmsc_sc_method_new (c, ns, meth, name, doc, NULL, NULL, FALSE, FALSE, ud)
+#define METHOD_NEW_NOARG(ns, meth, name, doc, ud) \
+	xmmsc_sc_namespace_add_method (ns, meth, name, doc, NULL, NULL, FALSE, FALSE, ud)
 
 static xmmsv_t *
 method_Hello (xmmsv_t *pargs, xmmsv_t *nargs, void *udata)
@@ -58,23 +58,27 @@ summon_timeout (xmmsc_connection_t *conn) {
 void
 xc_setup (GMainLoop *ml, xmmsc_connection_t *conn)
 {
+	xmmsc_sc_namespace_t *rootns;
 	xmmsc_sc_namespace_t *ns;
 	xmmsv_t *v;
 
 	xmmsc_sc_setup (conn);
 
-	/* v = xmmsv_new_string ("Hello, world!"); */
-	/* xmmsc_sc_namespace_add_constant (NULL, "hello", v); */
+	rootns = xmmsc_sc_namespace_root (conn);
 
-	METHOD_NEW_NOARG (conn, NULL, method_Hello, "Hello", "Say hello to the world", NULL);
+	v = xmmsv_new_string ("Hello, world!");
+	xmmsc_sc_namespace_add_constant (rootns, "constHello", v);
+	xmmsv_unref (v);
 
-	xmmsc_sc_broadcast_new (conn, NULL, "bcHello", "Keep saying hello to the world");
+	METHOD_NEW_NOARG (rootns, method_Hello, "Hello", "Say hello to the world", NULL);
 
-	ns = xmmsc_sc_namespace_new (conn, NULL, "evil", "Hell's gate");
+	xmmsc_sc_namespace_add_broadcast (rootns, "bcHello", "Keep saying hello to the world");
+
+	ns = xmmsc_sc_namespace_new (rootns, "evil", "Hell's gate");
 	v = xmmsv_new_int (666);
 	xmmsc_sc_namespace_add_constant (ns, "number", v);
 	xmmsv_unref (v);
-	xmmsc_sc_broadcast_new (conn, ns, "bcSummon", "Hell's summon ritual");
+	xmmsc_sc_namespace_add_broadcast (ns, "bcSummon", "Hell's summon ritual");
 
 	g_timeout_add (3000, (GSourceFunc) say_hello_timeout, conn);
 	g_timeout_add (0x666, (GSourceFunc) summon_timeout, conn);

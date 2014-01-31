@@ -36,9 +36,9 @@ xc_setup (GMainLoop *ml, xmmsc_connection_t *conn)
 	xmmsc_sc_namespace_t *rootns;
 	xmmsv_t *v;
 
-	xmmsc_sc_setup (conn);
+	rootns = xmmsc_sc_init (conn);
 
-	rootns = xmmsc_sc_namespace_root (conn);
+	/* rootns = xmmsc_sc_namespace_root (conn); */
 
 	v = xmmsv_new_string ("Hello, world!");
 	xmmsc_sc_namespace_add_constant (rootns, "constHello", v);

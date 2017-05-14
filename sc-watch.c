@@ -211,6 +211,7 @@ namespace_introspect_cb (xmmsv_t *val, introspect_data_t *id)
 
 	if (!xmmsv_dict_entry_get_int (val, "sender", &sender)) goto cleanup;
 	if (!xmmsv_dict_get (val, "payload", &payload)) goto cleanup;
+	if (xmmsv_is_error(payload)) goto cleanup;
 	if (!xmmsv_dict_get (payload, "broadcasts", &bcs)) goto cleanup;
 	i = xmmsv_list_get_size (bcs);
 	for (; i > 0; --i) {

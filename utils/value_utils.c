@@ -17,6 +17,7 @@
 #include <stdlib.h> /* free() */
 #include <stdio.h>
 #include <string.h>
+#include <inttypes.h>
 
 #include "value_utils.h"
 #include "coll_utils.h"
@@ -56,13 +57,24 @@ _xmmsv_compare (xmmsv_t *a, xmmsv_t *b, int ordered)
 
 		break;
 	}
-	case XMMSV_TYPE_INT32: {
-		int ia, ib;
+	case XMMSV_TYPE_INT64: {
+		int64_t ia, ib;
 
-		if (!xmmsv_get_int (a, &ia) || !xmmsv_get_int (b, &ib))
+		if (!xmmsv_get_int64 (a, &ia) || !xmmsv_get_int64 (b, &ib))
 			return 0;
 
 		if (ia != ib)
+			return 0;
+
+		break;
+	}
+	case XMMSV_TYPE_FLOAT: {
+		float fa, fb;
+
+		if (!xmmsv_get_float (a, &fa) || !xmmsv_get_float (b, &fb))
+			return 0;
+
+		if (fa != fb)
 			return 0;
 
 		break;
@@ -179,10 +191,20 @@ _xmms_dump (xmmsv_t *value, int indent)
 	type = xmmsv_get_type (value);
 
 	switch (type) {
-	case XMMSV_TYPE_INT32: {
-		int val;
-		xmmsv_get_int (value, &val);
-		printf ("%d", val);
+	case XMMSV_TYPE_NONE: {
+		printf ("None");
+		break;
+	}
+	case XMMSV_TYPE_INT64: {
+		int64_t val;
+		xmmsv_get_int64 (value, &val);
+		printf ("%" PRId64, val);
+		break;
+	}
+	case XMMSV_TYPE_FLOAT: {
+		float val;
+		xmmsv_get_float (value, &val);
+		printf ("%0.6f", val);
 		break;
 	}
 	case XMMSV_TYPE_STRING: {
@@ -241,7 +263,7 @@ _xmms_dump (xmmsv_t *value, int indent)
 		break;
 	}
 	default:
-		printf ("invalid type: %d\n", type);
+		printf ("<unsupported type: %d>", type);
 	}
 }
 
